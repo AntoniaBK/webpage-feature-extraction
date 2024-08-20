@@ -1,4 +1,6 @@
 
+import gzip
+import json
 import os
 import shutil
 from typing import Any
@@ -41,8 +43,10 @@ class ZipProcessor(CaptureProcessor):
     def get_html(self) -> str:
         return read_file(os.path.join(self.raw_data, '0.html'))
 
-    def get_har(self) -> str:
-        return read_file(os.path.join(self.raw_data, '0.har.gz'), binary=True)
+    def get_har(self) -> dict[str, Any]:
+        with gzip.open(os.path.join(self.raw_data, '0.har.gz'), 'rt', encoding='utf-8') as gz_file:
+            har_data = json.load(gz_file)
+            return har_data
 
     def get_last_redirect(self) -> str:
         return read_file(os.path.join(self.raw_data, '0.last_redirect.txt'))

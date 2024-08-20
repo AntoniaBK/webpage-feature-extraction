@@ -3,6 +3,8 @@ from typing import Any
 from lingua import Language, LanguageDetectorBuilder
 import ipaddress
 
+import spacy
+
 def safe_division(a: int, b: int) -> float:
     return a / b if b != 0 else 0.0
 
@@ -11,6 +13,16 @@ def detect_language(text: str):
     detector = LanguageDetectorBuilder.from_all_languages().build()
     l = detector.detect_language_of(text)
     return l
+
+def get_keywords_spacy(text:str) -> list[str]:
+    #'extracted_keywords': extracted_keywords,
+    # https://towardsdatascience.com/keyword-extraction-process-in-python-with-natural-language-processing-nlp-d769a9069d5c
+
+    # Spacy: 34 dependancies ... 
+    nlp = spacy.load('en_core_web_sm')
+    doc = nlp(text)
+    extracted_keywords = [ent.text for ent in doc.ents]
+    return extracted_keywords
 
 def read_file(file_path: str, binary: bool = False) -> str:
     """Read a file and return its content."""

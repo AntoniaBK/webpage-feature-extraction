@@ -34,32 +34,54 @@ class FeatureExtractor:
             selected_features = ['keywords', 'html', 'har', 'hash', 'host', 'link', 'parking', 'text', 'module']
 
         if 'keywords' in selected_features:
-            self._keyword_features()     
+            self.keyword_features()     
         if 'html' in selected_features:
-            self._html_features()
+            self.html_features()
         if 'har' in selected_features:
             # self._har_features()
             pass
         if 'hash' in selected_features:
-            self._hash_features()
+            self.hash_features()
         if 'host' in selected_features:
-            self._host_features()
+            self.host_features()
         if 'link' in selected_features:
-            self._link_features()
+            self.link_features()
         if 'parking' in selected_features:
-            self._parking_features()
+            self.parking_features()
         if 'text' in selected_features:
-            self._text_features()
+            self.text_features()
         if 'module' in selected_features:
             # self._module_features()
             pass
 
         return self.observation
     
-    def _keyword_features(self):
+    def get_observation(self):
+        return self.observation
+    
+    def keyword_features(self):
         """ Count appearance of keywords that are related to parking pages
         :return: array with count of synonyms of domain, parked and where they appear together in one line
         """
+        detailed_keywords = {
+            'domain': 0,
+            'site': 0,
+            'website': 0,
+            'page': 0,
+            'webpage': 0,
+            'registered': 0,
+            'sold': 0,
+            'sale': 0,
+            'parked': 0,
+            'parking': 0,
+            'hosted': 0,
+            'hosting': 0,
+            'available': 0,
+            'coming': 0,
+            'soon': 0,
+            'construction': 0
+        }
+
         domain_keywords = ['domain', 'site', 'website', 'page', 'webpage']
         # (other languages?)
         parked_keywords = ['registered', 'sold', 'sale', 'parked', 'parking', 'hosted', 'available']
@@ -68,10 +90,10 @@ class FeatureExtractor:
         other_keywords = ['coming', 'soon', 'construction']
         # count how often these words appear, how often together in one line and if they appear in the title.
         features = {
-                 'number_domain_keywords_en': 0, 
-                 'number_parking_kewords_en': 0, 
-                 'number_together_in_line_keywords_en': 0, 
-                 'keyword_in_title': False
+                'number_domain_keywords_en': 0, 
+                'number_parking_kewords_en': 0, 
+                'number_together_in_line_keywords_en': 0, 
+                'keyword_in_title': False
                  }
 
         title = self.soup.title.text if self.soup.title else ''
@@ -82,6 +104,9 @@ class FeatureExtractor:
             # gives numbers of lines that contain keywords
             domain = any(keyword in text for keyword in domain_keywords)
             parking = any(keyword in text for keyword in parked_keywords)
+            for keyword in detailed_keywords.keys():
+                if keyword in text:
+                    detailed_keywords[keyword] += 1
             if domain:
                 features['number_domain_keywords_en'] += 1
             if parking:
@@ -89,19 +114,11 @@ class FeatureExtractor:
             if domain and parking:
                 features['number_together_in_line_keywords_en'] += 1
         
+
+        features['detailed_keywords']= detailed_keywords
         self.observation.update(features)
-
-    def get_keywords_spacy(self) -> list[str]:
-        #'extracted_keywords': extracted_keywords,
-        # https://towardsdatascience.com/keyword-extraction-process-in-python-with-natural-language-processing-nlp-d769a9069d5c
-
-        # Spacy: 34 dependancies ... 
-        nlp = spacy.load('en_core_web_sm')
-        doc = nlp(self.soup.text)
-        extracted_keywords = [ent.text for ent in doc.ents]
-        return extracted_keywords
         
-    def _html_features(self):
+    def html_features(self):
         images = self.soup.find_all('img')
         iframes = self.soup.findAll('iframe')
         self.observation['presence_of_form'] = True if self.soup.input else False
@@ -110,7 +127,7 @@ class FeatureExtractor:
         self.observation['number-frames'] = len(iframes)
         self.observation['number-images'] = len(images) 
 
-    def _parking_features(self):
+    def parking_features(self):
         self.observation['parking'] = True if "parking-page" in self.capture.get_tags() else False
 
         circl_warninglist = read_json('data/blacklists/MISP-warninglist-parking-domain-ip.json')
@@ -131,14 +148,14 @@ class FeatureExtractor:
                     break
         self.observation['in_circl_pp_warninglists'] = in_circl_warninglist
 
-    def _host_features(self):
+    def host_features(self):
         first_hostname = urlparse(self.url).hostname
         last_hostname = urlparse(self.capture.get_last_redirect()).hostname
         self.observation['ip'] = if_exists(self.capture.get_ips(), last_hostname, None)
         self.observation['number_redirects'] = len(self.capture.get_redirects())
         self.observation['different-final-domain'] = False if first_hostname == last_hostname else True
 
-    def _link_features(self):
+    def link_features(self):
         last_hostname = urlparse(self.capture.get_last_redirect()).hostname
         links = self.soup.findAll('a')
         link_text_length = sum(len(link.text) for link in links)
@@ -152,7 +169,7 @@ class FeatureExtractor:
         self.observation['link-to-text-ratio'] = safe_division(link_text_length, number_text_characters)
         self.observation['number-non-link-characters'] = number_text_characters - link_text_length
 
-    def _text_features(self):
+    def text_features(self):
         text = self.soup.text
         # self.observation['languages'] = detect_language(text) 
         self.observation['url_in_title'] = True if self.url in (self.soup.title if self.soup.title else '') else False
@@ -160,25 +177,23 @@ class FeatureExtractor:
         # self.observation['present-contact-info']: bool
         
 
-    def _hash_features(self):
+    def hash_features(self):
         to_hash = "|".join(t.name for t in self.soup.findAll()).encode()
         pl_hash = hashlib.sha256(to_hash).hexdigest()[:32]
         self.observation['polish_hash'] = pl_hash
         #  self.observation['favicon_hash'] = None
     
-    def _module_features(self):
+    def module_features(self):
         lookyloo = Lookyloo()
         self.observation['third_party_requests'] = bool(lookyloo.trigger_modules(self.uuid))
 
-    def _har_features(self):
+    def har_features(self):
         """
         Code is adapted from https://github.com/flaiming/Domain-Parking-Sensors/blob/master/feature_extractor.py
-        No idea if it works
         """
-        with open(self.capture.get_har(), 'r') as file:
-            har = json.load(file)
+        har = self.capture.get_har()
 
-        domain = har["log"]["pages"][0]["id"]
+        domain = har["log"]["pages"][0]["id"] 
         ext = tldextract.extract(domain)
         domain = f"{ext.domain}.{ext.suffix}"
         domainNoTLD = ext.domain

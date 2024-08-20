@@ -19,7 +19,7 @@ class CaptureProcessor(ABC):
         pass
 
     @abstractmethod
-    def get_har(self) -> str:
+    def get_har(self) -> dict[str, Any]:
         pass  
 
     @abstractmethod
