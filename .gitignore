@@ -3,3 +3,5 @@ data/
 notes.txt
 .idea/
 __pycache__/
+.vscode/
+.pytest_cache/

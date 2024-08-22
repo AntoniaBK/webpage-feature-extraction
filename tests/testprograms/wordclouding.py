@@ -28,7 +28,7 @@ class CaptureProcessor:
         return [os.path.join(dir, f) for f in os.listdir(dir) if f.endswith('.zip')]
 
     def process_file(self, filepath):
-        cpt = ZipProcessor(filepath)  # Assuming ZipProcessor is defined elsewhere
+        cpt = ZipProcessor(filepath)  
         soup = BeautifulSoup(cpt.get_html(), features='lxml')
         doc = self.nlp(soup.get_text())
         extracted_keywords = [ent.text for ent in doc.ents]
@@ -49,9 +49,9 @@ class WordCloudGenerator:
 
 # Main script execution
 
-dirs = {#"en":"/home/antonia/Documents/Testcaptures/en/parking-page",
-        #"/home/antonia/Documents/Testcaptures/others", 
-        "fr": "/home/antonia/Documents/Testcaptures/fr/parking_page"}
+dirs = {#"en":"data/captures/Testcaptures/en/parking-page",
+        #"/data/captures/Testcaptures/others", 
+        "fr": "data/captures/Testcaptures/fr/parking_page"}
 for lang in dirs.keys():
     processor = CaptureProcessor(lang, dirs[lang])
     keywords = processor.process_all()

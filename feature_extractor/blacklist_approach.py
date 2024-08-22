@@ -43,6 +43,12 @@ class BlacklistApproach:
         return to_return
     
     def dnsResolving(self, domain:str) -> dict[str, Any]:
+        """Get DNS-info about a domain
+
+        :param domain: The domain that is to be resolved
+        :returns: A dictionary with the answer per requesttype
+            e.g. {'A': [], 'NS': []}
+        """
         type_request = ['A', 'NS']  # ['A', 'AAAA', 'NS', 'MX']
         result = dict()
 

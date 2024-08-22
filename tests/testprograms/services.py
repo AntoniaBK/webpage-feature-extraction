@@ -1,4 +1,6 @@
-ps = {
+# Parking services 
+# True if they still exist, else False (None if not looked up or unsure)
+ps = { # Parking services of zirngibl:2022:PrevalenceOfParking
 	"101domain": True,
 	"123reg_parking": True,
 	"123reg_placeholder": True,
@@ -82,7 +84,7 @@ ps = {
 	"wedos": None,
 	"west_cn": None
 }
-missing = {
+missing = { # parking services that are not included in the previous list
     "smartName": True,
     "zeropark": True,
     "Escrow.com": True, #since 1999
