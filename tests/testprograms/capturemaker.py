@@ -25,11 +25,11 @@ def get_list(path:str) -> list[str]:
         lines = file.readlines()
         return [line.strip() for line in lines]
 
-def is_url(string):
+def is_url(string:str)->bool:
     """Check if string is a valid URL"""
     return bool(URL_PATTERN.match(string))
 
-def is_uuid(string):
+def is_uuid(string:str)->bool:
     """Check if string is a valid UUID"""
     return bool(UUID_PATTERN.match(string))
 '''
