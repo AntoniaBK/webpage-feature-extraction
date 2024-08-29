@@ -16,7 +16,10 @@ lxml = "^5.2.2"
 wordcloud = "^1.9.3"
 pandas = "^2.2.2"
 haralyzer = "^2.4.0"
-har2tree = "^1.25.0"
+spacy = "^3.7.6"
+scikit-learn = "^1.5.1"
+scikit-plot = "^0.3.7"
+nltk = "^3.9.1"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.4"
