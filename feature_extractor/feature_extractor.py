@@ -27,7 +27,9 @@ class FeatureExtractor:
     def extract_all_features(self) -> dict[str, Any]:
         
         self.keyword_features()  
+        self.language_from_tags()
         self.html_features()
+        self.dns_features()
         self.parking_features()
         self.host_features()
         self.link_features()
@@ -41,65 +43,86 @@ class FeatureExtractor:
     def get_observation(self):
         return self.observation
     
+    def language_from_tags(self):
+        """ Gets language of the website from the tags
+
+        Adds the following feature to observation:
+        - 'language'
+        """
+        tags = self.capture.get_tags()
+        if 'en' in tags:
+            self.observation['language'] = 'en'
+        elif 'fr' in tags:
+            self.observation['language'] = 'fr'
+        else:
+            self.observation['language'] = 'unknown'
+
     def keyword_features(self):
         """ Count appearance of keywords that are related to parking pages
 
-        add array with count of synonyms of domain, parked and where they appear together in one line
-        add array with number of lines containig a keyword per keyword
+        Adds the following features to observation:
+        - 'number_domain_keywords_en':
+        The sum of the frequency of the words "domain", "website", "site", "page" and "webpage"
+        - 'number_parking_kewords_en':
+        The sum of the frequency of the words "parked", "parking", "registered", "sold", "sale", "hosted" and "available"
+        - 'number_together_in_line_keywords_en':
+        Number of lines that contain at least one word of each of the two previous group of words together.
+        - 'keyword_in_title_en':
+        Does any contextual synonym of "parking" or "domain" appear in the webiste's title? 
+        - 'stemmed_keyword_in_title':
+        Does any stemmed keyword appear in the title?
+        - The frequency of stemmed keywords per keyword (pattern: f'kword_{word}')
         """
-        detailed_keywords = {
-            'domain': 0,
-            'site': 0,
-            'website': 0,
-            'page': 0,
-            'webpage': 0,
-            'registered': 0,
-            'sold': 0,
-            'sale': 0,
-            'parked': 0,
-            'parking': 0,
-            'hosted': 0,
-            'hosting': 0,
-            'available': 0,
-            'coming': 0,
-            'soon': 0,
-            'construction': 0
-        }
+        stemmed_keywords = ['auction',
+                            'domain',
+                            'regist',
+                            'price',
+                            'offer',
+                            'servic',
+                            'host',
+                            'websit',
+                            'contact',
+                            'site',
+                            'transfer',
+                            'héberge',
+                            'internet',
+                            'serveur',
+                            'découvr',
+                            'mainten'
+                            ]
+        stemmed_keywords_features = {f'kword_{k}':0 for k in stemmed_keywords}
 
         domain_keywords = ['domain', 'site', 'website', 'page', 'webpage']
-        # (other languages?)
-        parked_keywords = ['registered', 'sold', 'sale', 'parked', 'parking', 'hosted', 'available']
-        # other languages might have the same word root
-        # keywords of the title, give often lot info about the content
-        other_keywords = ['coming', 'soon', 'construction']
-        # count how often these words appear, how often together in one line and if they appear in the title.
+        parking_keywords = ['registered', 'sold', 'sale', 'parked', 'parking', 'hosted', 'available']
+
         features = {
                 'number_domain_keywords_en': 0, 
                 'number_parking_kewords_en': 0, 
                 'number_together_in_line_keywords_en': 0, 
-                'keyword_in_title': False
+                'keyword_in_title_en': False,
+                'stemmed_keyword_in_title': False
                  }
+
+        for text in self.soup.findAll(text=True):
+            text = text.lower()
+            
+            for keyword in stemmed_keywords:
+                stemmed_keywords_features[f'kword_{keyword}'] += text.count(keyword)
+
+            domain = sum(text.count(key) for key in domain_keywords)
+            parking = sum(text.count(key) for key in parking_keywords)
+            if domain:
+                features['number_domain_keywords_en'] += domain
+            if parking:
+                features['number_parking_kewords_en'] += parking
+            if domain and parking:
+                features['number_together_in_line_keywords_en'] += 1
 
         title = self.soup.title.text if self.soup.title else ''
         if title:
-            features['keyword_in_title'] = any(keyword in title for keyword in domain_keywords + parked_keywords + other_keywords)
+            features['keyword_in_title_en'] = any(keyword in title for keyword in domain_keywords + parking_keywords)
+            features['stemmed_keyword_in_title'] = any(keyword in title for keyword in stemmed_keywords)
 
-        for text in self.soup.findAll(text=True):
-            # gives numbers of lines that contain keywords
-            domain = any(keyword in text for keyword in domain_keywords)
-            parking = any(keyword in text for keyword in parked_keywords)
-            for keyword in detailed_keywords.keys():
-                if keyword in text:
-                    detailed_keywords[keyword] += 1
-            if domain:
-                features['number_domain_keywords_en'] += 1
-            if parking:
-                features['number_parking_kewords_en'] += 1
-            if domain and parking:
-                features['number_together_in_line_keywords_en'] += 1
-        
-
-        features['detailed_keywords']= detailed_keywords
         self.observation.update(features)
         
     def html_features(self):
@@ -107,30 +130,46 @@ class FeatureExtractor:
         iframes = self.soup.findAll('iframe')
         self.observation['presence_of_form'] = True if self.soup.input else False
         self.observation['presence_of_nav'] = True if self.soup.nav else False
-        self.observation['text-aplpha-length'] = len(str(self.html))
+        self.observation['text-aplpha-length'] = len(str(self.html))# alpha-numeric?
         self.observation['number-frames'] = len(iframes)
         self.observation['number-images'] = len(images) 
+
+    def dns_features(self):
+        last_hostname = urlparse(self.capture.get_last_redirect()).hostname # redundant code
+        if not last_hostname:
+            last_hostname = self.capture.get_last_redirect()
+
+        ipv4 = self.capture.get_ips()[last_hostname]['v4'] # redundant code
+
+        
+        dns_info = self.list_approach.dnsResolving(last_hostname)
+        # dns_info might not be corresponding to the original capture as the captures can be some weeks to months old
+        if 'A' in dns_info.keys():
+            self.observation["dns_corresponding"] = is_intersection(ipv4, dns_info['A']) 
+        else:
+            self.observation["dns_corresponding"] = False
+        if 'NS' in dns_info.keys():
+            # check if the dns_info corresponds to the original capture and ns-info exists
+            self.observation['ns'] = dns_info['NS']
+            warning = self.list_approach.check_warning_list(data=dns_info)
+            self.observation['in_ns_warninglist'] = warning['park_ns']
+            self.observation["in_ip_warninglist"] = warning["park_ip"]
+        else:
+            self.observation['ns'] = None
+            self.observation['in_ns_warninglist'] = None
+            self.observation["in_ip_warninglist"] = None
 
     def parking_features(self):
         self.observation['parking'] = True if "parking-page" in self.capture.get_tags() else False
 
         circl_warninglist = read_json('data/blacklists/MISP-warninglist-parking-domain-ip.json')
 
-        last_hostname = urlparse(self.capture.get_last_redirect()).hostname # redundant code
-        if last_hostname:
-            ipv4 = self.capture.get_ips()[last_hostname]['v4'] # redundant code
-
+        # redundant code
+        last_hostname = urlparse(self.capture.get_last_redirect()).hostname 
+        if not last_hostname:
+            last_hostname = self.capture.get_last_redirect()
+        ipv4 = self.capture.get_ips()[last_hostname]['v4']
         
-        dns_info = self.list_approach.dnsResolving(self.url) 
-        # dns_info might not be corresponding to the original capture as the captures can be some weeks to months old
-        if 'A' in dns_info.keys() and is_intersection(ipv4, dns_info['A']) and 'NS' in dns_info.keys():
-            # check if the dns_info corresponds to the original capture and ns-info exists
-            self.observation['ns'] = dns_info['NS']
-            self.observation['in_ns_warninglist'] = self.list_approach.check_warning_list(data=dns_info)
-        else:
-            self.observation['ns'] = None
-            self.observation['in_ns_warninglist'] = None
-
         in_circl_warninglist = False
         for ip in ipv4:
             for subnet in circl_warninglist['list']:
