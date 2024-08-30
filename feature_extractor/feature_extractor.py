@@ -8,10 +8,18 @@ from bs4 import BeautifulSoup
 from feature_extractor.blacklist_approach import BlacklistApproach
 from feature_extractor.capture_processor import CaptureProcessor
 from feature_extractor.har_features import HARFeaturesExtractor
-from feature_extractor.helpers import if_exists, ipv4_in_subnet, is_intersection, safe_division,  read_json
+from feature_extractor.helpers import get_hostname, if_exists, ipv4_in_subnet, is_intersection, safe_division,  read_json
 
 class FeatureExtractor:
     def __init__(self, capture: CaptureProcessor):
+        """Initializes the observation
+
+        Adds the following features to observation
+        - 'uuid'
+        - 'tags'
+        - 'url'
+        - 'parking'
+        """
         self.capture = capture
         self.html = capture.get_html()
         self.uuid = self.capture.get_uuid()
@@ -20,22 +28,22 @@ class FeatureExtractor:
         self.observation = {
             'uuid': self.uuid,
             'tags': self.capture.get_tags(),
-            'url': self.url
+            'url': self.url,
+            'parking': True if "parking-page" in capture.get_tags() else False
         }
         self.list_approach = BlacklistApproach()
 
     def extract_all_features(self) -> dict[str, Any]:
+        """Calls all methods to add all possible features to obseravation
+        """
         
         self.keyword_features()  
         self.language_from_tags()
         self.html_features()
-        self.dns_features()
-        self.parking_features()
-        self.host_features()
+        self.warninglist_feature()
+        self.redirect_features()
         self.link_features()
-        self.text_features()
         self.har_features()
-        # self.module_features()
         self.hash_features()
 
         return self.observation
@@ -118,114 +126,132 @@ class FeatureExtractor:
             if domain and parking:
                 features['number_together_in_line_keywords_en'] += 1
 
-        title = self.soup.title.text if self.soup.title else ''
+        title = self.soup.title.text.lower() if self.soup.title else ''
         if title:
             features['keyword_in_title_en'] = any(keyword in title for keyword in domain_keywords + parking_keywords)
             features['stemmed_keyword_in_title'] = any(keyword in title for keyword in stemmed_keywords)
 
+        features.update(stemmed_keywords_features)
         self.observation.update(features)
         
     def html_features(self):
+        """ Extracts a set of features from the HTML structure and content
+
+        Adds the following features to observation:
+        - 'presence_of_nav'
+        - 'text_alpha_length'
+        - 'number_frames'
+        - 'number_images'
+        - 'domain_in_title'
+        - 'domain_in_text'
+        """
         images = self.soup.find_all('img')
         iframes = self.soup.findAll('iframe')
-        self.observation['presence_of_form'] = True if self.soup.input else False
         self.observation['presence_of_nav'] = True if self.soup.nav else False
-        self.observation['text-aplpha-length'] = len(str(self.html))# alpha-numeric?
-        self.observation['number-frames'] = len(iframes)
-        self.observation['number-images'] = len(images) 
+        self.observation['text_alpha_length'] = len(list(filter(str.isalnum, self.soup.get_text())))
+        self.observation['number_frames'] = len(iframes)
+        self.observation['number_images'] = len(images) 
 
-    def dns_features(self):
-        last_hostname = urlparse(self.capture.get_last_redirect()).hostname # redundant code
-        if not last_hostname:
-            last_hostname = self.capture.get_last_redirect()
+        first_hostname = get_hostname(self.url)
+        text = self.soup.get_text()
+        title = self.soup.title.text.lower() if self.soup.title else ''
+        self.observation['domain_in_title'] = True if first_hostname in title else False
+        self.observation['domain_in_text'] = True if first_hostname in text else False 
 
-        ipv4 = self.capture.get_ips()[last_hostname]['v4'] # redundant code
+    def warninglist_feature(self):
+        """Checks whether the domain's IP or NS appear on a warninglist
 
-        
+        Adds the following feature to observation:
+        - 'in_warning_list'
+        """
+        last_hostname = get_hostname(self.capture.get_last_redirect())
+        ipv4 = self.capture.get_ips()[last_hostname]['v4'] 
+
+        in_warninglist = False
         dns_info = self.list_approach.dnsResolving(last_hostname)
-        # dns_info might not be corresponding to the original capture as the captures can be some weeks to months old
         if 'A' in dns_info.keys():
-            self.observation["dns_corresponding"] = is_intersection(ipv4, dns_info['A']) 
+            dns_corresponding = is_intersection(ipv4, dns_info['A']) 
         else:
-            self.observation["dns_corresponding"] = False
-        if 'NS' in dns_info.keys():
-            # check if the dns_info corresponds to the original capture and ns-info exists
-            self.observation['ns'] = dns_info['NS']
+            dns_corresponding = False
+        if dns_corresponding and 'NS' in dns_info.keys():
             warning = self.list_approach.check_warning_list(data=dns_info)
-            self.observation['in_ns_warninglist'] = warning['park_ns']
-            self.observation["in_ip_warninglist"] = warning["park_ip"]
-        else:
-            self.observation['ns'] = None
-            self.observation['in_ns_warninglist'] = None
-            self.observation["in_ip_warninglist"] = None
-
-    def parking_features(self):
-        self.observation['parking'] = True if "parking-page" in self.capture.get_tags() else False
+            in_warninglist = warning['park_ns'] or warning['park_ip']
 
         circl_warninglist = read_json('data/blacklists/MISP-warninglist-parking-domain-ip.json')
-
-        # redundant code
-        last_hostname = urlparse(self.capture.get_last_redirect()).hostname 
-        if not last_hostname:
-            last_hostname = self.capture.get_last_redirect()
-        ipv4 = self.capture.get_ips()[last_hostname]['v4']
-        
         in_circl_warninglist = False
         for ip in ipv4:
             for subnet in circl_warninglist['list']:
                 if ipv4_in_subnet(ip, subnet):
                     in_circl_warninglist = True
                     break
-        self.observation['in_circl_pp_warninglists'] = in_circl_warninglist
+        in_warninglist = in_warninglist or in_circl_warninglist
+        self.observation['in_warninglist'] = in_warninglist
 
-    def host_features(self):
-        first_hostname = urlparse(self.url).hostname
-        last_hostname = urlparse(self.capture.get_last_redirect()).hostname
+    def redirect_features(self):
+        """Gets information about redirects to other pages
+
+        Adds the following features to observation:
+        - 'number_redirects'
+        - 'different_final_domain'
+        """
+        first_hostname = get_hostname(self.url)
+        last_hostname = get_hostname(self.capture.get_last_redirect())
+
         self.observation['ip'] = if_exists(self.capture.get_ips(), last_hostname, None) # CDN gewichtung warninglist
         self.observation['number_redirects'] = len(self.capture.get_redirects())
-        self.observation['different-final-domain'] = False if first_hostname == last_hostname else True
+        self.observation['different_final_domain'] = False if first_hostname == last_hostname else True
 
     def link_features(self):
-        last_hostname = urlparse(self.capture.get_last_redirect()).hostname
+        """Calculates statistics about anchor elements in the HTML
+
+        Adds the following features to observation:
+        - 'number_links'
+        - 'number_link_same_domain'
+        - 'average_link_length_same_domain'
+        - 'number_different_link_domains'
+        - 'average_link_length'
+        - 'maximum_link_length'
+        - 'link_to_text_ratio'
+        - 'number_non_link_characters'
+        """
+        last_hostname = get_hostname(self.capture.get_last_redirect())
+
         links = self.soup.findAll('a')
-        link_text_length = sum(len(link.text) for link in links)
-        number_text_characters = len(self.soup.text)
+        link_text_length = sum(len(list(filter(str.isalnum,link.text))) for link in links)
+        number_text_characters = len(list(filter(str.isalnum, self.soup.get_text())))
         hrefs = [link.get('href') for link in links if link.get('href')]
+        links_same_domain = [href for href in hrefs if last_hostname.lower() in href.lower()]
+        total_length_links_same_domain = sum(len(href) for href in links_same_domain)
         total_length = sum(len(href) for href in hrefs)
         self.observation['number_links'] = len(links)
-        self.observation['number_link_same_domain'] = sum(1 for href in hrefs if last_hostname in href)
-        self.observation['number_different_link_domains'] = len(set(urlparse(href).hostname for href in hrefs))
+        self.observation['number_link_same_domain'] = len(links_same_domain)
+        self.observation['average_link_length_same_domain'] = safe_division(total_length_links_same_domain, len(links_same_domain))
+        self.observation['number_different_link_domains'] = len(set(get_hostname(href) for href in hrefs))
         self.observation['average_link_length'] = safe_division(total_length, len(hrefs))
         self.observation['maximum_link_length'] = max((len(href) for href in hrefs), default=0)
-        self.observation['link-to-text-ratio'] = safe_division(link_text_length, number_text_characters)
-        self.observation['number-non-link-characters'] = number_text_characters - link_text_length
-
-    def text_features(self):
-        text = self.soup.text
-        # self.observation['languages'] = detect_language(text) 
-        self.observation['url_in_title'] = True if self.url in (self.soup.title if self.soup.title else '') else False
-        self.observation['url_in_text'] = True if self.url in text else False 
+        self.observation['link_to_text_ratio'] = safe_division(link_text_length, number_text_characters)
+        self.observation['number_non_link_characters'] = number_text_characters - link_text_length
         
     def hash_features(self):
-        to_hash = "|".join(t.name for t in self.soup.findAll()).encode()
-        pl_hash = hashlib.sha256(to_hash).hexdigest()[:32]
-        self.observation['polish_hash'] = pl_hash
-        # ToDo: self.observation['favicon_hash'] = capture.get_favicon_hashes
-    
-    def module_features(self):
-        lookyloo = Lookyloo() 
-        try:
-            if lookyloo.is_up:
-                # does it work like this
-                self.observation['third_party_requests'] = bool(lookyloo.trigger_modules(self.uuid))
-            else:
-                raise Exception("Lookyloo not reachable")
-        except Exception as e:
-            # e.g. uuid is not from  lookyloo.circl.lu
-            # what to do with e? print?
-            self.observation['third_party_requests'] = None
+        """Hashes the HTML-tags (helpfull for finding website clones)
 
+        Adds the following feature to observation:
+        - 'structural_hash'
+        """
+        to_hash = "|".join(t.name for t in self.soup.findAll()).encode()
+        hash = hashlib.sha256(to_hash).hexdigest()[:32]
+        self.observation['structural_hash'] = hash
+    
     def har_features(self):
+        """Calculates statistics about thirdparty content loaded on the domain
+
+        Adds the following features to observation:
+        - "third_party_requests_ratio"
+        - "third_party_data_ratio"
+        - "third_party_html_content_ratio"
+        - "initial_response_size"
+        - "initial_response_ratio"
+        """
         har = self.capture.get_har()
         har_extractor = HARFeaturesExtractor(har)
         self.observation.update(har_extractor.extract_features())

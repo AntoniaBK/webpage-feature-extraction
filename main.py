@@ -29,15 +29,16 @@ def remove_useless_tags(l:list[str])-> list[str]:
     return l
 
 def main():
-    #capture_dir = 'data/captures/Testcaptures/en/'
+    capture_dir = 'data/captures/Testcaptures'
     all_rows = {}
     capture_dir = "tests/captures"
     tags = []
-    json_file = 'data/output/data.json'
-    csv_file = 'data/output/data.csv'
+    json_file = 'data/output/testdata.json'
+    csv_file = 'data/output/testdata.csv'
+    structural_hash_count = {}
     
     # Test if the extraction works and get fieldnames
-    test_observation = make_observation("tests/captures/parking-page/capture.zip")
+    test_observation = make_observation("tests/captures/parking-page/dan.zip")
     if test_observation:
         fieldnames = test_observation.keys()
     else:
@@ -48,7 +49,6 @@ def main():
     folder_queue = queue.Queue()
     folder_queue.put(capture_dir)
     mode = 'w' # if not os.path.exists(csv_file) else 'a'
-    count = 15
     with open(csv_file, mode, newline='', encoding='utf-8') as file:        
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         if mode == 'w':
@@ -59,24 +59,34 @@ def main():
             capture_dir = folder_queue.get()
             if os.path.isdir(capture_dir):
                 tags = remove_useless_tags(capture_dir.split("/"))
-
+                print(tags)
                 for capture_file in os.listdir(capture_dir): 
                     
                     if capture_file.endswith('.zip'):
-                        if count < 1:
-                            sys.exit(0)
-                        count -= 1
-                        print(count)
-                        observation = make_observation(os.path.join(capture_dir, capture_file), tags)
+                        try:
+                            observation = make_observation(os.path.join(capture_dir, capture_file), tags)
+                        except Exception as e:
+                            print(e)
+                            continue
                         if observation:
-                            writer.writerow(observation)
-                            all_rows[observation['uuid']] = observation
+                            hash = observation['structural_hash']
+                            if hash in structural_hash_count.keys():
+                                structural_hash_count[hash] += 1
+                            else:
+                                structural_hash_count[hash] = 1
+                            if structural_hash_count[hash] < 2:
+                                writer.writerow(observation)
+                                all_rows[observation['uuid']] = observation
+                            else:
+                                pass # what should be done with the duplicated ones?
                     else:
                         # !there should not be extracted captures... 
                         folder_queue.put(os.path.join(capture_dir, capture_file)) 
                         
     with open(json_file, 'w') as file:
         json.dump(all_rows, file)
+    print(len(fieldnames))
+    print(len(all_rows))
 
 if __name__ == "__main__":
     main()

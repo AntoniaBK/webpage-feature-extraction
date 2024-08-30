@@ -5,8 +5,8 @@ import dns.resolver
 
 class BlacklistApproach:
     def __init__(self):
-        self.parking_domain_ns = read_json("data/blacklists/MISP-warninglist-parking-domain-ip.json")
-        self.parking_domain_ip = read_json("data/blacklists/MISP-warninglist-parking-domain-ns.json")
+        self.parking_domain_ns = read_json("data/blacklists/MISP-warninglist-parking-domain-ns.json")
+        self.parking_domain_ip = read_json("data/blacklists/MISP-warninglist-parking-domain-ip.json")
         # self.parking_services = read_json("data/blacklists/parking_services.json")
         
     def check_warning_list(self, domain:str = '', data:dict[str, Any]|None = None) -> dict[str, Any]:
@@ -21,15 +21,12 @@ class BlacklistApproach:
         to_return = {
             'park_ip': False,
             'park_ns': False,
-            'park_service_ip': False,
-            'park_service_ns': False
         }
         
         if 'A' in data_keys:
             for a in data['A']:
                 for subnet in self.parking_domain_ip['list']:
                     if ipv4_in_subnet(a, subnet):
-                        to_return['parking_domains'] = True
                         to_return['park_ip'] = True
                         break
 
@@ -37,7 +34,7 @@ class BlacklistApproach:
             for ns in data['NS']:
                 for park in self.parking_domain_ns['list']:
                     if park in ns.lower():
-                        to_return['parking_domains'] = True
+                        to_return['park_ns'] = True
                         break
 
         return to_return

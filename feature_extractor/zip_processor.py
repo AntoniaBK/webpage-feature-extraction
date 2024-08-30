@@ -16,6 +16,9 @@ class ZipProcessor(CaptureProcessor):
             raise FileNotFoundError(f"The path {capture_file} does not exist.")
         self.capture_file = capture_file
         self.raw_data = self._load_capture()
+        if os.path.exists(os.path.join(self.raw_data, 'error.txt')):
+            self.delete_extracted_folder
+            raise Exception(f'Error in capture: {capture_file}')
         self.tags = []
 
     def _load_capture(self) -> str:

@@ -1,5 +1,6 @@
 import json
 from typing import Any
+from urllib.parse import urlparse
 from lingua import Language, LanguageDetectorBuilder
 import ipaddress
 
@@ -58,5 +59,12 @@ def is_intersection(l1:list[Any], l2:list[Any]) -> bool:
             return True
     return False
 
+def get_hostname(url:str)-> str:
+    """Extracts hostname of a string if it is an url else returs the string
+    """
+    hostname = urlparse(url).hostname 
+    if hostname:
+        return hostname
+    return url
 
     
