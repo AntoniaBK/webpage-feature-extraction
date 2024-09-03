@@ -21,8 +21,12 @@ class HARFeaturesExtractor:
         total_html_content = 0
         third_party_html_content = 0
         initial_response_size = 0
+        number_redirects = 0
 
         for entry in self.har_parser.pages[0].entries: # type: ignore
+            status = entry['response']['status']
+            if status in [301, 302, 303, 307, 308]:
+                number_redirects += 1
             url = entry.request.url
             response_size = entry.response.bodySize
             content_type = entry.response.mimeType
@@ -52,7 +56,8 @@ class HARFeaturesExtractor:
             "third_party_data_ratio": third_party_data_ratio,
             "third_party_html_content_ratio": third_party_html_content_ratio,
             "initial_response_size": initial_response_size,
-            "initial_response_ratio": initial_response_ratio 
+            "initial_response_ratio": initial_response_ratio, 
+            "number_redirects": number_redirects
         }
 
         return features

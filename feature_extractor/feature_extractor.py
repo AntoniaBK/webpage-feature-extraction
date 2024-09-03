@@ -191,6 +191,7 @@ class FeatureExtractor:
         """Gets information about redirects to other pages
 
         Adds the following features to observation:
+        - 'ip'
         - 'number_redirects'
         - 'different_final_domain'
         """
@@ -198,7 +199,7 @@ class FeatureExtractor:
         last_hostname = get_hostname(self.capture.get_last_redirect())
 
         self.observation['ip'] = if_exists(self.capture.get_ips(), last_hostname, None) # CDN gewichtung warninglist
-        self.observation['number_redirects'] = len(self.capture.get_redirects())
+        #self.observation['number_redirects'] = len(self.capture.get_redirects())
         self.observation['different_final_domain'] = False if first_hostname == last_hostname else True
 
     def link_features(self):
@@ -251,6 +252,7 @@ class FeatureExtractor:
         - "third_party_html_content_ratio"
         - "initial_response_size"
         - "initial_response_ratio"
+        - 'number_redirects'
         """
         har = self.capture.get_har()
         har_extractor = HARFeaturesExtractor(har)

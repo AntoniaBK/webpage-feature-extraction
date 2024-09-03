@@ -22,19 +22,22 @@ def make_observation(path:str, tags:list[str] = []) -> dict[str, Any]|None:
         return features
     
 def remove_useless_tags(l:list[str])-> list[str]:
-    useless_tags = ["captures", "data", "tests", "Testcaptures"]
+    useless_tags = ["captures", "data", "tests", "additional_captures"]
     for t in useless_tags:
         if t in l:
             l.remove(t)
-    return l
+    return list(set(l))
 
 def main():
-    capture_dir = 'data/captures/Testcaptures'
+    #capture_dir = "tests/captures"
+    capture_dir = 'data/captures/additional_captures'
+    #capture_dir = 'data/captures/selected_captures'
+    #capture_dir = 'data/captures/ovh'
     all_rows = {}
-    capture_dir = "tests/captures"
+    name = os.path.basename(capture_dir)
     tags = []
-    json_file = 'data/output/testdata.json'
-    csv_file = 'data/output/testdata.csv'
+    json_file = f'data/output/data_{name}_duplicates.json'
+    csv_file = f'data/output/data_{name}_duplicates.csv'
     structural_hash_count = {}
     
     # Test if the extraction works and get fieldnames
@@ -74,7 +77,7 @@ def main():
                                 structural_hash_count[hash] += 1
                             else:
                                 structural_hash_count[hash] = 1
-                            if structural_hash_count[hash] < 2:
+                            if structural_hash_count[hash] > 1:
                                 writer.writerow(observation)
                                 all_rows[observation['uuid']] = observation
                             else:
